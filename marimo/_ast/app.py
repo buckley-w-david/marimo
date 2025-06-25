@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import ast
 import base64
+import functools
 import inspect
 import sys
 import threading
@@ -332,12 +333,15 @@ class App:
         """
         del kwargs
 
-        return cast(
+        decorated_function = cast(
             Union[Cell, Callable[[Fn[P, R]], Cell]],
             self._cell_manager.cell_decorator(
                 func, column, disabled, hide_code, app=InternalApp(self)
-            ),
-        )
+            ))
+
+        functools.update_wrapper(decorated_function, func)
+
+        return decorated_function
 
     @overload
     def function(self, func: Fn[P, R]) -> Fn[P, R]: ...
