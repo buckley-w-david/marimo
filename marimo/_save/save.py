@@ -34,6 +34,7 @@ from marimo._runtime.dataflow import DirectedGraph
 from marimo._runtime.side_effect import SideEffect
 from marimo._runtime.state import State
 from marimo._save.cache import Cache, CacheException
+from marimo._plugins.ui._core.ui_element import UIElement
 from marimo._save.hash import (
     DEFAULT_HASH,
     BlockHasher,
@@ -291,6 +292,24 @@ class _cache_call:
             return copy
         return self
 
+    def _reregister_ui_elements(self, obj: Any) -> None:
+        """Re-register any UIElements in the given object with the registry."""
+        ctx = safe_get_context()
+        if ctx is None:
+            return
+            
+        if isinstance(obj, UIElement):
+            # Re-register the UIElement
+            ctx.ui_element_registry.register(obj._id, obj)
+        elif isinstance(obj, (list, tuple)):
+            # Recursively check collections
+            for item in obj:
+                self._reregister_ui_elements(item)
+        elif isinstance(obj, dict):
+            # Recursively check dictionary values
+            for value in obj.values():
+                self._reregister_ui_elements(value)
+
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
         # Capture the deferred call case
         if self.__wrapped__ is None:
@@ -352,7 +371,10 @@ class _cache_call:
         try:
             if attempt.hit:
                 attempt.restore(scope)
-                return attempt.meta["return"]
+                cached_return = attempt.meta["return"]
+                # Re-register any UIElements that were returned from cache
+                self._reregister_ui_elements(cached_return)
+                return cached_return
             response = self.__wrapped__(*args, **kwargs)
             # stateful variables may be global
             scope = {
